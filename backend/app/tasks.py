@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from .celery_app import celery
 from .core.db import SessionLocal
 from . import models
+from .alerts import send_email, send_slack
 
 
 @celery.task
@@ -36,6 +37,11 @@ def run_check(endpoint_id: int) -> None:
             )
         db.add(log)
         db.commit()
+        if not log.success:
+            subject = f"Endpoint DOWN: {ep.name} ({ep.url})"
+            body = f"Status: {log.status_code}\nLatency: {log.latency_ms:.2f}ms\nError: {log.error_message or ''}"
+            send_email(subject, body, to=[ep.owner.email])
+            send_slack(f"{subject}\n{body}")
     finally:
         db.close()
 

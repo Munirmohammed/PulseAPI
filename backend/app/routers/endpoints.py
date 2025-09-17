@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from ..core.db import get_db
 from ..core.security import decode_token
 from .. import models, schemas
+from ..tasks import schedule_for_endpoint
 
 
 router = APIRouter(prefix="/endpoints", tags=["endpoints"])
@@ -27,6 +28,7 @@ def create_endpoint(
     db.add(ep)
     db.commit()
     db.refresh(ep)
+    schedule_for_endpoint(ep)
     return ep
 
 
@@ -65,6 +67,7 @@ def update_endpoint(
         setattr(ep, k, v)
     db.commit()
     db.refresh(ep)
+    schedule_for_endpoint(ep)
     return ep
 
 
@@ -79,6 +82,13 @@ def delete_endpoint(endpoint_id: int, db: Session = Depends(get_db), user_id: in
         raise HTTPException(status_code=404, detail="Not found")
     db.delete(ep)
     db.commit()
+    # remove schedule if exists
+    try:
+        from ..celery_app import celery
+
+        celery.conf.beat_schedule.pop(f"check_{endpoint_id}", None)
+    except Exception:
+        pass
     return None
 
 
